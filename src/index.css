@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-neutral-950 text-neutral-100 antialiased;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+      sans-serif;
+    overscroll-behavior: none;
+  }
+
+  ::selection {
+    @apply bg-white/25;
+  }
+}
+
+@layer utilities {
+  /* flip-glyph size — the clock row sets --glyph-size so three panels fit */
+  .glyph-size {
+    font-size: var(--glyph-size, clamp(3.5rem, 11vw, 8.5rem));
+  }
+
+  /* split-flap leaf fold — duration is supplied inline per instance */
+  @keyframes leaf {
+    from {
+      transform: rotateX(0deg);
+    }
+    to {
+      transform: rotateX(-180deg);
+    }
+  }
+
+  /* 3D scene for the split-flap leaf */
+  .flip-scene {
+    perspective: 1200px;
+  }
+
+  .flip-leaf {
+    transform-style: preserve-3d;
+    transform-origin: bottom center;
+  }
+
+  .flip-face {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+
+  .flip-face-back {
+    transform: rotateX(180deg);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+}
