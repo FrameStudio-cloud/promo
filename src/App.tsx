@@ -1,11 +1,13 @@
 import { useCallback } from 'react';
 import { ToastProvider, useToast } from 'cite-ui';
 import Clock from './components/Clock';
+import ControlRail from './components/ControlRail';
 import TaskList from './components/TaskList';
 import CollapseRail from './components/CollapseRail';
 import type { Task } from './lib/tasks';
-import { DEFAULT_MINUTES } from './lib/duration';
+import { DEFAULT_MINUTES, formatDuration } from './lib/duration';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { useFullscreen } from './hooks/useFullscreen';
 
 const STARTER: Task[] = [
   { id: 'seed-1', text: 'Pick one task and finish it', done: false, color: '#6366f1', createdAt: 3 },
@@ -20,7 +22,12 @@ function Shell() {
   const [duration, setDuration] = useLocalStorage('pomo.duration', DEFAULT_MINUTES);
   const [remaining, setRemaining] = useLocalStorage('pomo.remaining', duration * 60);
   const [running, setRunning] = useLocalStorage('pomo.running', false);
-  const [collapsed, setCollapsed] = useLocalStorage('pomo.collapsed', false);
+  const [soundOn, setSoundOn] = useLocalStorage('pomo.sound', true);
+
+  const [railOpen, setRailOpen] = useLocalStorage('pomo.railOpen', false);
+  const [todoOpen, setTodoOpen] = useLocalStorage('pomo.todoOpen', true);
+
+  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
 
   const notify = useCallback(
     (msg: string, kind: 'success' | 'info' | 'warning' | 'error' = 'info') => {
@@ -29,60 +36,115 @@ function Shell() {
     [toast],
   );
 
+  const finished = remaining === 0;
   const doneCount = tasks.filter((t) => t.done).length;
 
-  /* 70/30 side by side whenever there's width for it: a desktop window, or a
-     phone held sideways. Portrait phones fall back to the stacked layout. */
-  const split = [
-    'landscape:max-lg:grid-cols-[70fr_30fr]',
-    'lg:grid-cols-[70fr_30fr]',
+  /* start / pause — pressing start at zero runs the duration again */
+  const toggleRun = useCallback(() => {
+    if (remaining === 0) setRemaining(duration * 60);
+    setRunning(!running);
+  }, [remaining, duration, running, setRemaining, setRunning]);
+
+  const reset = useCallback(() => {
+    setRemaining(duration * 60);
+    setRunning(false);
+  }, [duration, setRemaining, setRunning]);
+
+  /* nudge the countdown without disturbing the full duration */
+  const adjust = useCallback(
+    (minutes: number) => {
+      setRemaining((prev) => Math.max(0, prev + minutes * 60));
+    },
+    [setRemaining],
+  );
+
+  const setSessionDuration = useCallback(
+    (minutes: number) => {
+      setDuration(minutes);
+      setRemaining(minutes * 60);
+      setRunning(false);
+    },
+    [setDuration, setRemaining, setRunning],
+  );
+
+  /* both side panels folded away = give the clock everything */
+  const maximised = !railOpen && !todoOpen;
+
+  /* the task column keeps its share only while it is actually open */
+  const sideBySide = [
+    'landscape:max-lg:grid-cols-[auto_minmax(0,1fr)_minmax(0,30%)]',
+    'lg:grid-cols-[auto_minmax(0,1fr)_minmax(0,30%)]',
   ].join(' ');
 
   return (
     <main
       className={[
-        'grid h-full grid-cols-1 transition-[grid-template-columns] duration-300 ease-out',
-        collapsed
-          ? ['landscape:max-lg:grid-cols-[70fr_minmax(0,44px)]', 'lg:grid-cols-[70fr_minmax(0,56px)]'].join(' ')
-          : split,
+        'grid h-full grid-cols-[auto_minmax(0,1fr)] grid-rows-[auto_1fr]',
+        'landscape:max-lg:grid-rows-1',
+        'lg:grid-rows-1',
+        todoOpen
+          ? sideBySide
+          : 'landscape:max-lg:grid-cols-[auto_minmax(0,1fr)_44px] lg:grid-cols-[auto_minmax(0,1fr)_44px]',
       ].join(' ')}
     >
-      {/* CLOCK — 70% */}
-      <div className="min-h-[70vh] landscape:max-lg:min-h-0 lg:min-h-0">
-        <Clock
-          duration={duration}
-          setDuration={setDuration}
-          remaining={remaining}
-          setRemaining={setRemaining}
+      {/* CONTROLS — left rail, collapsible */}
+      <div className="row-span-2 flex min-h-0 flex-col lg:row-span-1 landscape:max-lg:row-span-1">
+        <ControlRail
+          collapsed={!railOpen}
+          onToggleCollapse={() => setRailOpen(!railOpen)}
           running={running}
-          setRunning={setRunning}
+          finished={finished}
+          onToggleRun={toggleRun}
+          onReset={reset}
+          onAdjust={adjust}
+          soundOn={soundOn}
+          onToggleSound={() => {
+            const next = !soundOn;
+            setSoundOn(next);
+            notify(next ? 'Alarm on' : 'Alarm muted', 'info');
+          }}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
+          duration={duration}
+          onSetDuration={(minutes) => {
+            setSessionDuration(minutes);
+            notify(`Set to ${formatDuration(minutes)}`, 'success');
+          }}
           notify={notify}
         />
       </div>
 
-      {/* TODO — 30%, collapsible */}
+      {/* CLOCK */}
+      <div className="flex min-h-[70vh] flex-col landscape:max-lg:min-h-0 lg:min-h-0">
+        <Clock
+          duration={duration}
+          remaining={remaining}
+          setRemaining={setRemaining}
+          running={running}
+          setRunning={setRunning}
+          soundOn={soundOn}
+          onToggleRun={toggleRun}
+          onReset={reset}
+          maximised={maximised}
+          notify={notify}
+        />
+      </div>
+
+      {/* TASKS — right panel, collapsible */}
       <aside
         className={[
-          'relative min-h-0 border-t border-white/5 bg-neutral-900/40',
+          'relative min-h-0 border-t border-white/5 bg-neutral-900/20',
           'landscape:max-lg:border-t-0 landscape:max-lg:border-l',
           'lg:border-t-0 lg:border-l',
-          collapsed ? 'overflow-hidden' : '',
+          todoOpen ? '' : 'overflow-hidden',
         ].join(' ')}
       >
-        {collapsed ? (
-          <CollapseRail
-            collapsed={collapsed}
-            onToggle={() => setCollapsed(false)}
-            done={doneCount}
-            total={tasks.length}
-          />
-        ) : (
+        {todoOpen ? (
           <>
             <TaskList tasks={tasks} setTasks={setTasks} notify={notify} />
-
             <button
               type="button"
-              onClick={() => setCollapsed(true)}
+              onClick={() => setTodoOpen(false)}
               aria-label="Collapse task list"
               aria-expanded={true}
               title="Collapse task list"
@@ -101,6 +163,12 @@ function Shell() {
               </svg>
             </button>
           </>
+        ) : (
+          <CollapseRail
+            onExpand={() => setTodoOpen(true)}
+            done={doneCount}
+            total={tasks.length}
+          />
         )}
       </aside>
     </main>

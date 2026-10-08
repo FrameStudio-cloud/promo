@@ -8,7 +8,9 @@
 
 ![The app on a desktop screen](docs/app.png)
 
-A 70/30 split: a black split-flap clock on the left, your task list on the right.
+A three-column layout: a collapsible **control rail** on the left, the black split-flap
+clock in the middle, and your task list on the right. Fold both side panels away and the
+clock takes the whole screen.
 No accounts, no server, no tracking — everything lives in `localStorage`.
 
 ## Features
@@ -18,18 +20,24 @@ No accounts, no server, no tracking — everything lives in `localStorage`.
 - Any duration you like: type `8h`, `90m`, `1h30m`, `2 hours`, `0.5h` or just `45`
 - Drifts by nothing — the countdown is derived from a wall-clock deadline, not a tick count
 - Rings three tones and stops at `00:00`; press **Run again** to repeat the same duration
-- Changing the duration resets the countdown; nothing advances on its own
+- Nudge the countdown by a minute without disturbing the full duration
+
+**Control rail** — collapses to a 56px column of icons, opens to 232px with labels
+- Start / pause, reset, ±1 minute
+- Mute the alarm (remembered across reloads)
+- Fullscreen
+- The duration field, so the clock itself needs no controls at all
 
 **Tasks**
 - Every new card is given a **random colour**, and never the same one twice in a row
 - **Drag to reorder** (the handle appears on hover)
 - Tick a card to finish it — it fades out and strikes through
 - Delete per card, plus *Clear done* and *Clear all*
-- Collapses to a 56 px rail so the clock can have the room
+- Collapses to a 44px rail so the clock can have the room
 
 **Everywhere else**
 - **PWA** — installable to the home screen, works fully offline via a service worker
-- **Phone landscape** gets the same side-by-side layout, with a compacted vertical rhythm
+- **Phone landscape** gets the same three-column layout; fold both rails and the panels grow ~50%
 - Works in portrait too — it stacks
 - `space` and `r` shortcuts, and the dark scheme is fixed rather than following the OS
 
@@ -70,19 +78,21 @@ the flip animation, drag-and-drop, duration parsing — is hand-rolled and depen
 
 ```
 src/
-  App.tsx                    70/30 grid, persistence, collapse state
+  App.tsx                    3-column grid, persistence, rail states
   components/
-    Clock.tsx                the countdown, controls, duration field
+    Clock.tsx                the countdown readout and status
     FlipPanel.tsx            one split-flap panel (static halves + folding leaf)
+    ControlRail.tsx          collapsible left rail: run/reset/±1m/sound/fullscreen
     DurationInput.tsx        duration parsing + the m/h toggle
     TaskList.tsx             add, reorder, clear
     TaskCard.tsx             one draggable card
-    CollapseRail.tsx         the narrow rail when the panel is collapsed
+    CollapseRail.tsx         the narrow rail when the task panel is collapsed
   lib/
     duration.ts              parse "8h" / "90m" / "1h30m" → minutes
     tasks.ts                 task type, colour palette, helpers
   hooks/
     useLocalStorage.ts       typed wrapper around cite-ui's hook
+    useFullscreen.ts         fullscreen state + toggle
 scripts/
   gen-icons.mjs              PNG encoder + the icon artwork
 ```

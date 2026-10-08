@@ -1,26 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import FlipPanel from './FlipPanel';
 import { formatDuration } from '../lib/duration';
-import DurationInput from './DurationInput';
 
 type Props = {
   /** session length in minutes */
   duration: number;
-  setDuration: (m: number) => void;
   remaining: number;
   setRemaining: (s: number) => void;
   running: boolean;
   setRunning: (v: boolean) => void;
+  soundOn: boolean;
+  onToggleRun: () => void;
+  onReset: () => void;
+  /** both side panels are folded away — take the room */
+  maximised: boolean;
   notify: (msg: string, kind?: 'success' | 'info' | 'warning' | 'error') => void;
 };
 
 export default function Clock({
   duration,
-  setDuration,
   remaining,
   setRemaining,
   running,
   setRunning,
+  soundOn,
+  onToggleRun,
+  onReset,
+  maximised,
   notify,
 }: Props) {
   const [now, setNow] = useState(() => new Date());
@@ -40,7 +46,8 @@ export default function Clock({
   }, [setRemaining]);
 
   /* three short tones when the session ends */
-  function beep() {
+  const beep = useCallback(() => {
+    if (!soundOn) return;
     try {
       const Ctx =
         window.AudioContext ??
@@ -65,7 +72,7 @@ export default function Clock({
     } catch {
       /* audio blocked — ignore */
     }
-  }
+  }, [soundOn]);
 
   const hours = Math.floor(remaining / 3600);
   const minutes = Math.floor((remaining % 3600) / 60);
@@ -100,19 +107,7 @@ export default function Clock({
     setRunning(false);
     beep();
     notify(`Time's up — ${formatDuration(duration)} done`, 'success');
-  }, [remaining, running, duration, notify, setRunning]);
-
-  /* start / pause — pressing start at zero runs the duration again */
-  const toggle = useCallback(() => {
-    if (remainingRef.current === 0) setRemaining(duration * 60);
-    setRunning(!running);
-  }, [running, duration, setRemaining, setRunning]);
-
-  const reset = useCallback(() => {
-    setRemaining(duration * 60);
-    setRunning(false);
-    notify('Timer reset', 'info');
-  }, [duration, setRemaining, setRunning, notify]);
+  }, [remaining, running, duration, notify, setRunning, beep]);
 
   /* keyboard shortcuts */
   useEffect(() => {
@@ -122,13 +117,13 @@ export default function Clock({
 
       if (e.code === 'Space') {
         e.preventDefault();
-        toggle();
+        onToggleRun();
       }
-      if (e.key.toLowerCase() === 'r') reset();
+      if (e.key.toLowerCase() === 'r') onReset();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggle, reset]);
+  }, [onToggleRun, onReset]);
 
   const dateLine = now.toLocaleDateString(undefined, {
     month: 'short',
@@ -136,6 +131,9 @@ export default function Clock({
     year: 'numeric',
   });
   const weekday = now.toLocaleDateString(undefined, { weekday: 'short' });
+
+  const panelH = maximised ? 'min(58vh,26vw)' : 'min(38vh,19vw)';
+  const glyph = maximised ? 'min(24vh,10.5vw)' : 'min(16vh,8vw)';
 
   return (
     <section className="flex h-full flex-col items-center justify-between bg-black px-6 py-8 sm:px-10 [@media(max-height:560px)]:px-4 [@media(max-height:560px)]:py-3">
@@ -164,13 +162,13 @@ export default function Clock({
       {/* digits */}
       <div className="flex w-full flex-1 flex-col items-center justify-center">
         <div
-          className={[
-            'flex items-center justify-center gap-2 sm:gap-5',
-            // panels are sized from whichever runs out first: height or width,
-            // so a short-but-wide phone landscape fits three of them
-            '[--panel-h:min(38vh,19vw)]',
-            '[--glyph-size:min(16vh,8vw)]',
-          ].join(' ')}
+          className="flex items-center justify-center gap-2 [@media(max-height:560px)]:gap-1.5 sm:gap-5"
+          style={
+            {
+              '--panel-h': panelH,
+              '--glyph-size': glyph,
+            } as React.CSSProperties
+          }
         >
           <FlipPanel value={hours} label="Hours" />
           <FlipPanel value={minutes} label="Minutes" />
@@ -178,42 +176,9 @@ export default function Clock({
         </div>
       </div>
 
-      {/* controls */}
-      <div className="w-full max-w-2xl">
-        <div className="flex items-center justify-center gap-3 [@media(max-height:560px)]:gap-2">
-          <button
-            type="button"
-            onClick={reset}
-            className="rounded-full border border-white/10 px-5 py-2.5 text-sm text-neutral-400 transition-colors hover:border-white/25 hover:text-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 [@media(max-height:560px)]:px-4 [@media(max-height:560px)]:py-1.5 [@media(max-height:560px)]:text-xs"
-          >
-            Reset
-          </button>
-
-          <button
-            type="button"
-            onClick={toggle}
-            className="min-w-28 rounded-full bg-neutral-100 px-8 py-2.5 text-sm font-semibold text-neutral-950 transition-all hover:bg-white active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 [@media(max-height:560px)]:min-w-24 [@media(max-height:560px)]:px-6 [@media(max-height:560px)]:py-1.5 [@media(max-height:560px)]:text-xs"
-          >
-            {running ? 'Pause' : finished ? 'Run again' : 'Start'}
-          </button>
-        </div>
-
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-2 [@media(max-height:560px)]:mt-3">
-          <span className="text-[0.7rem] uppercase tracking-widest text-neutral-600 [@media(max-height:560px)]:hidden">
-            Duration
-          </span>
-          <DurationInput
-            minutes={duration}
-            onApply={(minutes) => {
-              setDuration(minutes);
-              setRemaining(minutes * 60);
-              setRunning(false);
-            }}
-            notify={notify}
-          />
-        </div>
-
-        <p className="mt-6 text-center text-[0.65rem] text-neutral-700 [@media(max-height:560px)]:hidden">
+      {/* footer */}
+      <div className="w-full max-w-2xl text-center">
+        <p className="text-[0.65rem] text-neutral-700 [@media(max-height:560px)]:hidden">
           space — start / pause · r — reset
         </p>
       </div>
