@@ -3,7 +3,7 @@
  * Hand-rolled PNG encoder (zlib is built into node) so the repo needs no
  * image tooling to regenerate icons.
  *
- *   node scripts/gen-icons.mjs
+ *   npm run icons
  */
 import { deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -39,7 +39,7 @@ const chunk = (type, data) => {
   return Buffer.concat([len, body, crc]);
 };
 
-/** rgba: Uint8Array of size*size*4 */
+/** rgba: Buffer of size*size*4 */
 function encodePng(size, rgba) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(size, 0);
@@ -47,7 +47,7 @@ function encodePng(size, rgba) {
   ihdr[8] = 8; // bit depth
   ihdr[9] = 6; // colour type: RGBA
   ihdr[10] = 0; // deflate
-  ihdr[11] = 0; // filter: adaptive
+  ihdr[11] = 0; // adaptive filtering
   ihdr[12] = 0; // no interlace
 
   // one filter byte (0 = none) per scanline
@@ -66,40 +66,46 @@ function encodePng(size, rgba) {
   ]);
 }
 
-/* ---------- the clock face, drawn with 3x supersampling ---------- */
+/* ---------- the mark ---------- */
 
 const SS = 3; // supersample factor
 
-/** signed distance from p to the segment a-b */
-function segDist(px, py, ax, ay, bx, by) {
-  const vx = bx - ax;
-  const vy = by - ay;
-  const wx = px - ax;
-  const wy = py - ay;
-  const t = Math.max(0, Math.min(1, (wx * vx + wy * vy) / (vx * vx + vy * vy)));
-  const dx = wx - t * vx;
-  const dy = wy - t * vy;
-  return Math.hypot(dx, dy);
+/** distance from p to a rounded rectangle centred on (cx, cy); <= 0 is inside */
+function roundRectDist(px, py, cx, cy, halfW, halfH, r) {
+  const dx = Math.abs(px - cx) - (halfW - r);
+  const dy = Math.abs(py - cy) - (halfH - r);
+  const outside = Math.hypot(Math.max(dx, 0), Math.max(dy, 0));
+  return outside + Math.min(Math.max(dx, dy), 0) - r;
 }
 
 /**
+ * Three split-flap panels on a black tile — the same three-part readout the
+ * app shows, which stays legible all the way down to favicon size.
+ *
  * @param size      output px
- * @param artScale  scales the clock art inside the tile (maskable safe zone)
+ * @param artScale  scales the panels inside the tile (maskable safe zone)
  * @param rounded   rounded tile; false = full bleed, the OS masks it
  */
 function drawIcon(size, { artScale = 1, rounded = true } = {}) {
   const buf = Buffer.alloc(size * size * 4);
   const c = size / 2;
 
-  const r = size * 0.3 * artScale; // clock face radius
-  const ring = r * 0.13; // ring thickness
-  const handW = r * 0.1;
-  const tileRadius = rounded ? size * 0.22 : 0;
+  const tileR = rounded ? size * 0.22 : 0;
+
+  // panel geometry — three cards and the gaps between them span 0.745 of the
+  // canvas at artScale 1, leaving comfortable margins
+  const cardW = size * 0.215 * artScale;
+  const cardH = size * 0.46 * artScale;
+  const gap = size * 0.05 * artScale;
+  const cardR = size * 0.032 * artScale;
+  const seam = size * 0.016 * artScale; // the fold line
+  const firstX = c - (cardW * 1.5 + gap);
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       let bg = 0;
-      let fg = 0;
+      let panel = 0;
+      let seamHit = 0;
 
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
@@ -107,32 +113,34 @@ function drawIcon(size, { artScale = 1, rounded = true } = {}) {
           const py = y + (sy + 0.5) / SS;
 
           // black tile (rounded rect, or full bleed)
-          const dx = Math.max(tileRadius - px, px - (size - tileRadius), 0);
-          const dy = Math.max(tileRadius - py, py - (size - tileRadius), 0);
-          const inTile = tileRadius === 0 || Math.hypot(dx, dy) <= tileRadius;
+          const inTile =
+            tileR === 0 ||
+            roundRectDist(px, py, c, c, size / 2, size / 2, tileR) <= 0;
           if (inTile) bg++;
 
-          // clock ring, then the hands, in white
-          const d = Math.hypot(px - c, py - c);
-          let mark = Math.abs(d - r) <= ring / 2;
-
-          // minute hand: straight up
-          if (!mark) mark = segDist(px, py, c, c, c, c - r * 0.58) <= handW;
-          // hour hand: up and to the right
-          if (!mark) mark = segDist(px, py, c, c, c + r * 0.34, c - r * 0.34) <= handW;
-
-          if (mark) fg++;
+          // three panels, each split across the middle by a dark seam
+          for (let i = 0; i < 3; i++) {
+            const cx = firstX + i * (cardW + gap);
+            if (roundRectDist(px, py, cx, c, cardW / 2, cardH / 2, cardR) <= 0) {
+              panel++;
+              if (Math.abs(py - c) <= seam / 2) seamHit++;
+              break;
+            }
+          }
         }
       }
 
       const n = SS * SS;
       const a = bg / n;
-      const f = fg / n;
+      const isPanel = panel / n;
+      const isSeam = seamHit / n;
       const i = (y * size + x) * 4;
-      // white mark composited over the black tile
-      buf[i] = Math.round(255 * f);
-      buf[i + 1] = Math.round(255 * f);
-      buf[i + 2] = Math.round(255 * f);
+
+      // near-white panels, with the seam punched back to the tile colour
+      const luma = 233 * (1 - isSeam) + 16 * isSeam;
+      buf[i] = Math.round(luma * isPanel);
+      buf[i + 1] = Math.round(luma * isPanel);
+      buf[i + 2] = Math.round(luma * isPanel);
       buf[i + 3] = Math.round(255 * a);
     }
   }
@@ -147,10 +155,10 @@ mkdirSync(OUT, { recursive: true });
 const targets = [
   ['icon-192.png', 192, {}],
   ['icon-512.png', 512, {}],
-  // maskable: full bleed background, art inside the ~80% safe zone
-  ['icon-maskable-512.png', 512, { artScale: 0.66, rounded: false }],
+  // maskable: full-bleed background, art inside the ~80% safe zone
+  ['icon-maskable-512.png', 512, { artScale: 0.68, rounded: false }],
   // iOS applies its own mask, so hand it a square full-bleed icon
-  ['apple-touch-icon.png', 180, { artScale: 0.82, rounded: false }],
+  ['apple-touch-icon.png', 180, { artScale: 0.84, rounded: false }],
 ];
 
 for (const [name, size, opts] of targets) {
