@@ -1,14 +1,18 @@
 import { useRef } from 'react';
 import type { Task } from '../lib/tasks';
 import { readableOn, withAlpha } from '../lib/tasks';
+import { formatDuration } from '../lib/duration';
 
 type Props = {
   task: Task;
   index: number;
   dragging: boolean;
   isOver: boolean;
+  /** this task is the one focus sessions log onto */
+  focused: boolean;
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
+  onSetFocus: (id: string) => void;
   onDragStart: (id: string) => void;
   onDragEnter: (id: string) => void;
   onDragEnd: () => void;
@@ -19,13 +23,25 @@ export default function TaskCard({
   index,
   dragging,
   isOver,
+  focused,
   onToggle,
   onRemove,
+  onSetFocus,
   onDragStart,
   onDragEnter,
   onDragEnd,
 }: Props) {
   const dragDepth = useRef(0);
+
+  const subDone = task.subtasks.filter((s) => s.done).length;
+  const subTotal = task.subtasks.length;
+
+  const bits: string[] = [];
+  if (subTotal) bits.push(`${subDone}/${subTotal} steps`);
+  if (task.sessions) {
+    const label = `${task.sessions} session${task.sessions === 1 ? '' : 's'}`;
+    bits.push(task.focusMinutes ? `${label} · ${formatDuration(task.focusMinutes)}` : label);
+  }
 
   return (
     <li
@@ -78,6 +94,15 @@ export default function TaskCard({
         style={{ background: task.color, opacity: task.done ? 0.35 : 1 }}
       />
 
+      {/* focus ring — a steady outline, no motion for something read often */}
+      {focused && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-xl"
+          style={{ boxShadow: `inset 0 0 0 1.5px ${task.color}` }}
+        />
+      )}
+
       <div className="flex items-start gap-3 py-3 pl-4 pr-2">
         {/* checkbox */}
         <button
@@ -110,13 +135,57 @@ export default function TaskCard({
             {task.text}
           </p>
           {!task.done && (
-            <p className="mt-1 text-[0.65rem] uppercase tracking-wider text-neutral-500">
-              #{index + 1}
+            <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[0.65rem] uppercase tracking-wider text-neutral-500">
+              {focused && (
+                <span
+                  className="flex items-center gap-1.5"
+                  style={{ color: task.color }}
+                >
+                  <span
+                    aria-hidden
+                    className="size-1.5 rounded-full"
+                    style={{ background: task.color }}
+                  />
+                  Focusing
+                </span>
+              )}
+              {bits.length > 0 ? (
+                <span>{bits.join(' · ')}</span>
+              ) : (
+                !focused && <span>#{index + 1}</span>
+              )}
             </p>
           )}
         </div>
 
         <div className="flex shrink-0 items-center gap-0.5">
+          {/* focus target */}
+          {!task.done && (
+            <button
+              type="button"
+              onClick={() => onSetFocus(task.id)}
+              aria-pressed={focused}
+              aria-label={focused ? `Stop focusing on "${task.text}"` : `Focus on "${task.text}"`}
+              title={focused ? 'Stop focusing' : 'Log focus sessions to this task'}
+              className={[
+                'grid size-6 place-items-center rounded transition-all duration-200 focus:outline-none focus-visible:opacity-100',
+                focused
+                  ? 'opacity-100'
+                  : 'text-neutral-500 opacity-0 hover:bg-white/10 hover:text-neutral-200 group-hover:opacity-100',
+              ].join(' ')}
+              style={
+                focused
+                  ? { background: task.color, color: readableOn(task.color) }
+                  : undefined
+              }
+            >
+              <svg viewBox="0 0 12 12" className="size-3.5" aria-hidden>
+                <circle cx="6" cy="6" r="4.4" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <circle cx="6" cy="6" r="1.7" fill="currentColor" />
+              </svg>
+            </button>
+          )}
+
           {!task.done && (
             <span
               aria-hidden

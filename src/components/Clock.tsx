@@ -1,98 +1,33 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import FlipPanel from './FlipPanel';
-import { formatDuration } from '../lib/duration';
+import type { Task } from '../lib/tasks';
 
 type Props = {
-  /** session length in minutes */
-  duration: number;
   remaining: number;
-  setRemaining: (s: number) => void;
   running: boolean;
-  setRunning: (v: boolean) => void;
-  soundOn: boolean;
   onToggleRun: () => void;
   onReset: () => void;
   /** both side panels are folded away — take the room */
   maximised: boolean;
-  notify: (msg: string, kind?: 'success' | 'info' | 'warning' | 'error') => void;
+  /** the task focus sessions are being logged onto, if any */
+  focusTask: Task | null;
+  onOpenTasks: () => void;
 };
 
+/**
+ * The split-flap readout. Purely presentational — the ticker itself lives in
+ * useCountdown at the shell so the countdown survives page changes.
+ */
 export default function Clock({
-  duration,
   remaining,
-  setRemaining,
   running,
-  setRunning,
-  soundOn,
   onToggleRun,
   onReset,
   maximised,
-  notify,
+  focusTask,
+  onOpenTasks,
 }: Props) {
   const [now, setNow] = useState(() => new Date());
-  const audioCtx = useRef<AudioContext | null>(null);
-
-  /* The ticker must not restart whenever `remaining` changes, so it reads the
-     latest value through a ref that a sibling effect keeps up to date. */
-  const remainingRef = useRef(remaining);
-  const setRemainingRef = useRef(setRemaining);
-
-  useEffect(() => {
-    remainingRef.current = remaining;
-  }, [remaining]);
-
-  useEffect(() => {
-    setRemainingRef.current = setRemaining;
-  }, [setRemaining]);
-
-  /* three short tones when the session ends */
-  const beep = useCallback(() => {
-    if (!soundOn) return;
-    try {
-      const Ctx =
-        window.AudioContext ??
-        (window as unknown as { webkitAudioContext: typeof AudioContext })
-          .webkitAudioContext;
-      audioCtx.current ??= new Ctx();
-      const ctx = audioCtx.current;
-      void ctx.resume?.().catch(() => undefined);
-
-      [0, 0.22, 0.44].forEach((offset) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = 660;
-        gain.gain.setValueAtTime(0.0001, ctx.currentTime + offset);
-        gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + offset + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + offset + 0.18);
-        osc.connect(gain).connect(ctx.destination);
-        osc.start(ctx.currentTime + offset);
-        osc.stop(ctx.currentTime + offset + 0.2);
-      });
-    } catch {
-      /* audio blocked — ignore */
-    }
-  }, [soundOn]);
-
-  const hours = Math.floor(remaining / 3600);
-  const minutes = Math.floor((remaining % 3600) / 60);
-  const seconds = remaining % 60;
-  const finished = remaining === 0;
-
-  /* ticker — derived from a wall-clock deadline so it never drifts */
-  useEffect(() => {
-    if (!running) return;
-
-    const endsAt = Date.now() + remainingRef.current * 1000;
-    const tick = () =>
-      setRemainingRef.current(
-        Math.max(0, Math.round((endsAt - Date.now()) / 1000)),
-      );
-
-    tick();
-    const id = window.setInterval(tick, 250);
-    return () => window.clearInterval(id);
-  }, [running]);
 
   /* live date line */
   useEffect(() => {
@@ -100,14 +35,10 @@ export default function Clock({
     return () => window.clearInterval(id);
   }, []);
 
-  /* reach zero: stop, ring once, stay put — no auto-advance */
-  useEffect(() => {
-    if (!running || remaining !== 0) return;
-
-    setRunning(false);
-    beep();
-    notify(`Time's up — ${formatDuration(duration)} done`, 'success');
-  }, [remaining, running, duration, notify, setRunning, beep]);
+  const hours = Math.floor(remaining / 3600);
+  const minutes = Math.floor((remaining % 3600) / 60);
+  const seconds = remaining % 60;
+  const finished = remaining === 0;
 
   /* keyboard shortcuts */
   useEffect(() => {
@@ -120,10 +51,11 @@ export default function Clock({
         onToggleRun();
       }
       if (e.key.toLowerCase() === 'r') onReset();
+      if (e.key.toLowerCase() === 't') onOpenTasks();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onToggleRun, onReset]);
+  }, [onToggleRun, onReset, onOpenTasks]);
 
   const dateLine = now.toLocaleDateString(undefined, {
     month: 'short',
@@ -157,6 +89,22 @@ export default function Clock({
         <p className="mt-8 text-center text-sm text-neutral-500 [@media(max-height:560px)]:mt-3 [@media(max-height:560px)]:text-xs">
           {dateLine} <span className="text-neutral-600">{weekday}</span>
         </p>
+
+        {focusTask && (
+          <p
+            className="mt-2 flex items-center justify-center gap-2 text-xs text-neutral-500"
+            title={`Focusing on ${focusTask.text}`}
+          >
+            <span
+              aria-hidden
+              className="size-1.5 shrink-0 rounded-full"
+              style={{ background: focusTask.color }}
+            />
+            <span className="max-w-[70%] truncate">
+              Focusing on “{focusTask.text}”
+            </span>
+          </p>
+        )}
       </div>
 
       {/* digits */}
@@ -179,7 +127,7 @@ export default function Clock({
       {/* footer */}
       <div className="w-full max-w-2xl text-center">
         <p className="text-[0.65rem] text-neutral-700 [@media(max-height:560px)]:hidden">
-          space — start / pause · r — reset
+          space — start / pause · r — reset · t — tasks
         </p>
       </div>
     </section>

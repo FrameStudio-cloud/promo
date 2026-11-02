@@ -1,15 +1,26 @@
 import { useCallback, useState } from 'react';
 import TaskCard from './TaskCard';
 import type { Task } from '../lib/tasks';
-import { randomColor, uid } from '../lib/tasks';
+import { makeTask, removeTask, toggleTask } from '../lib/tasks';
 
 type Props = {
   tasks: Task[];
   setTasks: (updater: (prev: Task[]) => Task[]) => void;
+  /** id of the task focus sessions log onto, if any */
+  focusTaskId: string | null;
+  onSetFocus: (id: string) => void;
+  onOpenTasks: () => void;
   notify: (msg: string, kind?: 'success' | 'info' | 'warning' | 'error') => void;
 };
 
-export default function TaskList({ tasks, setTasks, notify }: Props) {
+export default function TaskList({
+  tasks,
+  setTasks,
+  focusTaskId,
+  onSetFocus,
+  onOpenTasks,
+  notify,
+}: Props) {
   const [text, setText] = useState('');
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
@@ -23,33 +34,20 @@ export default function TaskList({ tasks, setTasks, notify }: Props) {
     }
 
     // every new card gets a random colour, never repeating the previous one
-    const color = randomColor(tasks[0]?.color);
-
-    setTasks((prev) => [
-      {
-        id: uid(),
-        text: value,
-        done: false,
-        color,
-        createdAt: Date.now(),
-      },
-      ...prev,
-    ]);
+    const task = makeTask(value, tasks[0]?.color);
+    setTasks((prev) => [task, ...prev]);
     setText('');
     notify('Task added', 'success');
   };
 
   const toggle = useCallback(
-    (id: string) =>
-      setTasks((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
-      ),
+    (id: string) => setTasks((prev) => toggleTask(prev, id)),
     [setTasks],
   );
 
   const remove = useCallback(
     (id: string) => {
-      setTasks((prev) => prev.filter((t) => t.id !== id));
+      setTasks((prev) => removeTask(prev, id));
       notify('Task deleted', 'info');
     },
     [setTasks, notify],
@@ -101,13 +99,34 @@ export default function TaskList({ tasks, setTasks, notify }: Props) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex items-baseline justify-between gap-3 px-5 pt-5 pb-3 [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:pt-3 [@media(max-height:560px)]:pb-2">
+      <header className="flex items-center gap-2 px-5 pt-5 pb-3 [@media(max-height:560px)]:px-3 [@media(max-height:560px)]:pt-3 [@media(max-height:560px)]:pb-2">
         <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-neutral-300">
           Up next
         </h2>
+        <span className="flex-1" />
         <span className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-[0.65rem] text-neutral-400 tabular-nums">
           {doneCount}/{tasks.length}
         </span>
+        <button
+          type="button"
+          onClick={onOpenTasks}
+          aria-label="Open the tasks page"
+          title="Open the tasks page"
+          className="grid size-7 shrink-0 place-items-center rounded-lg text-neutral-600 transition-colors hover:bg-white/5 hover:text-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            className="size-3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M6 3h8M6 8h8M6 13h8M2.5 3h.01M2.5 8h.01M2.5 13h.01" />
+          </svg>
+        </button>
       </header>
 
       <form onSubmit={add} className="flex gap-2 px-5 [@media(max-height:560px)]:px-3">
@@ -129,7 +148,9 @@ export default function TaskList({ tasks, setTasks, notify }: Props) {
       </form>
 
       <p className="px-5 pt-2 pb-1 text-[0.65rem] text-neutral-600 [@media(max-height:560px)]:hidden">
-        {tasks.length > 1 ? 'Drag cards to reorder · tick to complete' : 'Tick a card to complete it'}
+        {tasks.length > 1
+          ? 'Drag to reorder · ◎ marks your focus task'
+          : 'Tick a card to complete it'}
       </p>
 
       <ul className="no-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-2 [@media(max-height:560px)]:space-y-1.5 [@media(max-height:560px)]:px-2 [@media(max-height:560px)]:py-1.5">
@@ -140,8 +161,10 @@ export default function TaskList({ tasks, setTasks, notify }: Props) {
             index={i}
             dragging={draggingId === task.id}
             isOver={overId === task.id && draggingId !== task.id}
+            focused={task.id === focusTaskId}
             onToggle={toggle}
             onRemove={remove}
+            onSetFocus={onSetFocus}
             onDragStart={setDraggingId}
             onDragEnter={handleDragEnter}
             onDragEnd={endDrag}

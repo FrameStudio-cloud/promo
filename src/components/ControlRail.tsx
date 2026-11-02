@@ -18,6 +18,7 @@ type Props = {
   duration: number;
   onSetDuration: (minutes: number) => void;
   notify: (msg: string, kind?: 'success' | 'info' | 'warning' | 'error') => void;
+  onOpenTasks: () => void;
 };
 
 /* ---------- icons ---------- */
@@ -48,6 +49,10 @@ const ICONS = {
   expand: { d: 'M13 4h3v3M7 16H4v-3M16 4l-4.5 4.5M4 16l4.5-4.5', filled: false },
   collapse: { d: 'M7 4v3H4M13 16v-3h3M4 7l4.5 4.5M16 13l-4.5-4.5', filled: false },
   hourglass: { d: 'M7 3h6M7 17h6M8 3v3.2L10 9l-2 2.8V17M12 3v3.2L10 9', filled: false },
+  tasks: {
+    d: 'M7 5.5h9M7 10h9M7 14.5h9M3.6 5.5h.01M3.6 10h.01M3.6 14.5h.01',
+    filled: false,
+  },
 } as const;
 
 /* ---------- buttons ---------- */
@@ -111,6 +116,7 @@ export default function ControlRail({
   duration,
   onSetDuration,
   notify,
+  onOpenTasks,
 }: Props) {
   const expand = !collapsed;
 
@@ -168,6 +174,12 @@ export default function ControlRail({
             label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             onClick={onToggleFullscreen}
             active={isFullscreen}
+            showLabel={expand}
+          />
+          <IconButton
+            icon="tasks"
+            label="Tasks page"
+            onClick={onOpenTasks}
             showLabel={expand}
           />
         </div>

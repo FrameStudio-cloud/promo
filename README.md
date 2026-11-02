@@ -1,15 +1,17 @@
 <div align="center">
   <img src="public/icon-512.png" alt="Timer icon" width="96" height="96" />
   <h1>Timer</h1>
-  <p>A split-flap countdown timer with a draggable task list. Installable, works offline.</p>
+  <p>A split-flap countdown timer with a student task list — subtasks, focus tracking, and a page of its own. Installable, works offline.</p>
 </div>
 
 ---
 
 ![The app on a desktop screen](docs/app.png)
 
-A three-column layout: a collapsible **control rail** on the left, the black split-flap
-clock in the middle, and your task list on the right. Fold both side panels away and the
+Two pages: the **timer** — a three-column layout with a collapsible control rail
+on the left, the black split-flap clock in the middle, and a quick task list on
+the right — and the **tasks page** at `#/tasks`, where tasks get subtask
+checklists and focus tracking. Fold both side panels away on the timer and the
 clock takes the whole screen.
 No accounts, no server, no tracking — everything lives in `localStorage`.
 
@@ -34,6 +36,15 @@ No accounts, no server, no tracking — everything lives in `localStorage`.
 - Tick a card to finish it — it fades out and strikes through
 - Delete per card, plus *Clear done* and *Clear all*
 - Collapses to a 44px rail so the clock can have the room
+
+**Tasks page** (`#/tasks`) — the same list with room to breathe
+- **Subtask checklists**: open a task, break it into steps, watch the progress bar fill
+- **Focus tracking**: mark a task with the ◎ target, and every session the clock finishes
+  is logged onto it — session count and focused minutes, on the card and on the clock
+- A **live timer pill** in the header: pause/play and the countdown while you plan;
+  click it to jump back to the clock
+- Completed tasks sink into their own group at the bottom
+- Reachable from the control rail, the side panel, or `t`; `Escape` comes back
 
 **Everywhere else**
 - **PWA** — installable to the home screen, works fully offline via a service worker
@@ -65,6 +76,8 @@ npm run dev          # http://localhost:5173
 | --- | --- |
 | `space` | Start / pause |
 | `r` | Reset to the full duration |
+| `t` | Open the tasks page |
+| `Escape` | Back to the timer (tasks page) |
 | `Enter` | Apply the duration you typed |
 
 ## Tech
@@ -78,21 +91,28 @@ the flip animation, drag-and-drop, duration parsing — is hand-rolled and depen
 
 ```
 src/
-  App.tsx                    3-column grid, persistence, rail states
+  App.tsx                    routing, persistence, focus logging, rail states
+  pages/
+    TasksPage.tsx            #/tasks — checklist + focus tracking workspace
   components/
-    Clock.tsx                the countdown readout and status
+    Clock.tsx                the countdown readout and status (display only)
     FlipPanel.tsx            one split-flap panel (static halves + folding leaf)
     ControlRail.tsx          collapsible left rail: run/reset/±1m/sound/fullscreen
     DurationInput.tsx        duration parsing + the m/h toggle
-    TaskList.tsx             add, reorder, clear
-    TaskCard.tsx             one draggable card
+    TaskList.tsx             add, reorder, clear — the timer's quick view
+    TaskCard.tsx             one draggable card in the quick view
+    TaskRow.tsx              one expandable row on the tasks page
+    TimerPill.tsx            live countdown readout for the tasks page header
     CollapseRail.tsx         the narrow rail when the task panel is collapsed
   lib/
-    duration.ts              parse "8h" / "90m" / "1h30m" → minutes
-    tasks.ts                 task type, colour palette, helpers
+    duration.ts              parse "8h" / "90m" / "1h30m" → minutes, clock formats
+    tasks.ts                 task & subtask types, colours, list operations
+    audio.ts                 the end-of-session chime
   hooks/
     useLocalStorage.ts       typed wrapper around cite-ui's hook
     useFullscreen.ts         fullscreen state + toggle
+    useCountdown.ts          the wall-clock ticker + completion (runs across pages)
+    useHashRoute.ts          #/timer ↔ #/tasks, no dependency
 scripts/
   gen-icons.mjs              PNG encoder + the icon artwork
 ```
